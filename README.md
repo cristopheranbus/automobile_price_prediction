@@ -1,4 +1,4 @@
-# Automobile Price Prediction
+﻿# Automobile Price Prediction
 
 Sistema de prediccion de precio de automoviles con un flujo de entrenamiento reproducible, configuracion por YAML, trazabilidad con MLflow y una base inicial de MLOps.
 
