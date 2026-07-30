@@ -9,6 +9,23 @@ from src.config import (
 )
 
 
+def test_build_configs_from_empty_mapping_uses_defaults() -> None:
+    data_config = build_data_config({})
+    training_config = build_training_config({})
+
+    assert data_config.data_path == Path("data/automobile_dataset.csv")
+    assert data_config.target_column == "Selling_Price"
+    assert training_config.experiment_name == "automobile-price-prediction"
+    assert training_config.registered_model_name == "automobile-price-predictor"
+    assert training_config.tracking_dir == Path("mlruns")
+    assert training_config.model_artifact_path == "model"
+    assert training_config.config_artifact_path == "config/config.json"
+    assert training_config.history_artifact_path == "reports/final_training_history.json"
+    assert training_config.summary_artifact_path == "reports/experiment_summary.json"
+    assert training_config.reports_artifact_dir == "reports"
+    assert training_config.architectures
+
+
 def test_build_data_config_from_mapping() -> None:
     config = build_data_config(
         {
@@ -33,6 +50,12 @@ def test_build_training_config_normalizes_architectures() -> None:
             "experiment_name": "demo",
             "epochs": 50,
             "use_early_stopping": False,
+            "tracking_dir": "mlruns",
+            "model_artifact_path": "artifacts/model",
+            "config_artifact_path": "artifacts/config.json",
+            "history_artifact_path": "artifacts/history.json",
+            "summary_artifact_path": "artifacts/summary.json",
+            "reports_artifact_dir": "artifacts/reports",
             "architectures": [[16], [32, 16], 64],
         }
     )
@@ -40,6 +63,12 @@ def test_build_training_config_normalizes_architectures() -> None:
     assert config.experiment_name == "demo"
     assert config.epochs == 50
     assert config.use_early_stopping is False
+    assert config.tracking_dir == Path("mlruns")
+    assert config.model_artifact_path == "artifacts/model"
+    assert config.config_artifact_path == "artifacts/config.json"
+    assert config.history_artifact_path == "artifacts/history.json"
+    assert config.summary_artifact_path == "artifacts/summary.json"
+    assert config.reports_artifact_dir == "artifacts/reports"
     assert config.architectures == [(16,), (32, 16), (64,)]
 
 

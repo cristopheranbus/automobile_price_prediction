@@ -22,6 +22,21 @@ class ArchitectureResult:
     model: Any
 
 
+@dataclass
+class BestArchitectureResult:
+    ranking: int
+    architecture: tuple[int, ...]
+    history: dict[str, list[float]]
+    model: Any
+    rmse_valid: float
+    mae_valid: float
+    r2_valid: float
+    val_loss_minima: float
+    epochs_trained: int
+    best_epoch: int
+    criterion_order: str
+
+
 def revisar_datos_faltantes(
     dataframe: pd.DataFrame,
     columnas: list[str],
@@ -505,8 +520,8 @@ def compare_architectures_regression(
     criterion_order: str = "rmse_valid",
     verbose_training: int = 0,
     show_progress: bool = True,
-) -> pd.DataFrame:
-    """Train several architectures and return a ranked comparison table."""
+) -> BestArchitectureResult:
+    """Train several architectures and return the best ranked candidate."""
 
     if not architectures:
         raise ValueError("La lista de arquitecturas no puede estar vacia.")
@@ -562,6 +577,7 @@ def compare_architectures_regression(
         resultados.append(
             {
                 "modelo": index,
+                "architecture_tuple": result.architecture,
                 "arquitectura": str(list(result.architecture)),
                 "neuronas_por_capa": " -> ".join(str(neuronas) for neuronas in result.architecture),
                 "capas_ocultas": len(result.architecture),
@@ -598,7 +614,20 @@ def compare_architectures_regression(
         .reset_index(drop=True)
     )
     tabla_resultados.insert(0, "ranking", range(1, len(tabla_resultados) + 1))
-    return tabla_resultados
+    best_row = tabla_resultados.iloc[0]
+    return BestArchitectureResult(
+        ranking=int(best_row["ranking"]),
+        architecture=tuple(best_row["architecture_tuple"]),
+        history=best_row["history"],
+        model=best_row["model"],
+        rmse_valid=float(best_row["rmse_valid"]),
+        mae_valid=float(best_row["mae_valid"]),
+        r2_valid=float(best_row["r2_valid"]),
+        val_loss_minima=float(best_row["val_loss_minima"]),
+        epochs_trained=int(best_row["epocas_entrenadas"]),
+        best_epoch=int(best_row["mejor_epoca"]),
+        criterion_order=criterion_order,
+    )
 
 
 def save_dataframe(df: pd.DataFrame, output_path: Path) -> Path:
@@ -646,7 +675,24 @@ def build_mlflow_pyfunc_model(
     numeric_columns: list[str],
     missing_tokens: list[str],
 ) -> Any:
-    """Create an MLflow pyfunc wrapper that handles raw automobile features."""
+    """Create an MLflow `pyfunc` wrapper around the trained pricing pipeline.
+
+    The goal of this wrapper is to make inference simple for downstream users:
+    they pass a raw `pandas.DataFrame` with the original vehicle columns, and
+    MLflow takes care of the rest.
+
+    Internally, the wrapper:
+    - validates that the input is a DataFrame;
+    - checks that the expected raw columns are present;
+    - applies the same cleaning rules used during training;
+    - loads the serialized scikit-learn preprocessor;
+    - loads the serialized Keras model;
+    - returns predictions as a one-column DataFrame.
+
+    Keeping all of that logic in the `pyfunc` layer is important because it
+    makes the logged model self-contained and much easier to reuse in notebooks,
+    batch jobs, APIs, or the MLflow Model Registry.
+    """
 
     import mlflow.pyfunc
 
@@ -657,20 +703,27 @@ def build_mlflow_pyfunc_model(
             numeric_columns: list[str],
             missing_tokens: list[str],
         ) -> None:
+            # The column lists are stored so inference can reproduce the exact
+            # same expectations that were used during training.
             self.categorical_columns = categorical_columns
             self.numeric_columns = numeric_columns
             self.missing_tokens = missing_tokens
             self.preprocessor = None
             self.keras_model = None
 
-        def load_context(self, context: Any) -> None:
+        def load_context(self, context) -> None:
+            # MLflow calls this once when the model is loaded. Here we restore
+            # the serialized preprocessing pipeline and the trained neural net
+            # from the artifact paths provided by MLflow.
             from tensorflow import keras
 
             with open(context.artifacts["preprocessor"], "rb") as file:
                 self.preprocessor = pickle.load(file)
             self.keras_model = keras.models.load_model(context.artifacts["keras_model"])
 
-        def predict(self, context: Any, model_input: Any) -> pd.DataFrame:
+        def predict(self, context, model_input: pd.DataFrame) -> pd.DataFrame:
+            # MLflow pyfunc receives arbitrary inputs, so we enforce the
+            # contract explicitly before trying to transform anything.
             if not isinstance(model_input, pd.DataFrame):
                 raise TypeError("El modelo espera un DataFrame de pandas como entrada.")
 
@@ -679,6 +732,10 @@ def build_mlflow_pyfunc_model(
             if missing_columns:
                 raise ValueError(f"Faltan columnas requeridas para inferencia: {missing_columns}")
 
+            # Reutilizamos exactamente la misma limpieza que durante training.
+            # Esto evita divergencias entre entrenamiento e inferencia cuando el
+            # dataset viene con espacios, nulos representados como texto o tokens
+            # ambiguos como "na" o "missing".
             cleaned_input = aplicar_reglas_limpieza(
                 model_input[expected_columns].copy(),
                 variables_categoricas=self.categorical_columns,
@@ -686,6 +743,10 @@ def build_mlflow_pyfunc_model(
                 valores_faltantes=self.missing_tokens,
                 verbose=False,
             )
+
+            # El preprocesador transforma columnas crudas en un tensor numérico
+            # compatible con el modelo Keras. La prediccion final se devuelve en
+            # un DataFrame para mantener una interfaz tabular amigable.
             transformed_input = self.preprocessor.transform(cleaned_input[expected_columns])
             predictions = self.keras_model.predict(transformed_input, verbose=0).ravel()
             return pd.DataFrame({"prediction": predictions})
@@ -702,12 +763,20 @@ def dump_artifacts_to_tempdir(
     model: Any,
     temp_dir: Path,
 ) -> tuple[Path, Path]:
-    """Persist the fitted preprocessor and model in a temporary directory."""
+    """Persist the fitted preprocessor and Keras model in a temporary directory.
+
+    MLflow's `pyfunc.log_model` API expects file paths for external artifacts.
+    This helper materializes both objects on disk first so they can be attached
+    to the logged model package.
+    """
 
     temp_dir.mkdir(parents=True, exist_ok=True)
     preprocessor_path = temp_dir / "preprocessor.pkl"
     keras_model_path = temp_dir / "keras_model.keras"
 
+    # The preprocessor is serialized with pickle because it is a scikit-learn
+    # object. The Keras model is saved in its native `.keras` format so it can
+    # be reloaded later without rebuilding the architecture by hand.
     with preprocessor_path.open("wb") as file:
         pickle.dump(preprocessor, file)
     model.save(keras_model_path)

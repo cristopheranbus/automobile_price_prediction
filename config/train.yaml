@@ -1,5 +1,5 @@
 data:
-  data_path: data/automobile_dataset.csv
+  data_path: data/input/automobile_dataset.csv
   target_column: Selling_Price
   categorical_columns:
     - Make
@@ -23,45 +23,58 @@ training:
   experiment_name: automobile-price-prediction
   registered_model_name: automobile-price-predictor
   tracking_uri: null
-  epochs: 300
+  tracking_dir: mlruns
+  model_artifact_path: model
+  config_artifact_path: config/config.json
+  history_artifact_path: reports/final_training_history.json
+  summary_artifact_path: reports/experiment_summary.json
+  reports_artifact_dir: reports
+  epochs: 1000
   batch_size: null
-  patience: 30
+  patience: 50
   learning_rate: 0.001
   use_early_stopping: true
   verbose_training: 0
   run_name: null
   experiments:
-    - name: compact-baseline
+    - name: wide-128
       learning_rate: 0.001
-      epochs: 250
+      epochs: 500
       batch_size: null
-      patience: 20
+      patience: 35
       architectures:
-        - [16]
-        - [32]
-        - [64, 32]
+        - [128]
+        - [128, 64]
       criterion_order: rmse_valid
       use_early_stopping: true
 
-    - name: balanced-default
+    - name: balanced-32
       learning_rate: 0.001
-      epochs: 300
+      epochs: 750
       batch_size: null
-      patience: 30
+      patience: 45
       architectures:
-        - [64, 32]
         - [128, 64]
         - [128, 64, 32]
       criterion_order: rmse_valid
       use_early_stopping: true
 
-    - name: deeper-models
+    - name: deep-16
       learning_rate: 0.0005
-      epochs: 350
+      epochs: 850
       batch_size: null
-      patience: 35
+      patience: 50
       architectures:
-        - [128, 64, 32]
         - [128, 64, 32, 16]
+      criterion_order: rmse_valid
+      use_early_stopping: true
+
+    - name: max-depth-8
+      learning_rate: 0.0005
+      epochs: 1000
+      batch_size: null
+      patience: 60
+      architectures:
+        - [128, 64, 32, 16, 8]
       criterion_order: rmse_valid
       use_early_stopping: true
