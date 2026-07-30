@@ -24,11 +24,11 @@ DEFAULT_NUMERIC_COLUMNS: tuple[str, ...] = (
 )
 
 DEFAULT_ARCHITECTURES: list[tuple[int, ...]] = [
-    (16,),
-    (32,),
-    (64, 32),
+    (128,),
     (128, 64),
     (128, 64, 32),
+    (128, 64, 32, 16),
+    (128, 64, 32, 16, 8),
 ]
 
 
@@ -64,7 +64,13 @@ class TrainingConfig:
     experiment_name: str = "automobile-price-prediction"
     registered_model_name: str = "automobile-price-predictor"
     tracking_uri: str | None = None
-    epochs: int = 300
+    tracking_dir: Path | None = Path("mlruns")
+    model_artifact_path: str = "model"
+    config_artifact_path: str = "config/config.json"
+    history_artifact_path: str = "reports/final_training_history.json"
+    summary_artifact_path: str = "reports/experiment_summary.json"
+    reports_artifact_dir: str = "reports"
+    epochs: int = 500
     batch_size: int | None = None
     patience: int = 30
     learning_rate: float = 0.001
@@ -76,7 +82,10 @@ class TrainingConfig:
     )
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        if self.tracking_dir is not None:
+            data["tracking_dir"] = str(self.tracking_dir)
+        return data
 
 
 @dataclass(frozen=True)
@@ -159,6 +168,7 @@ def build_training_config(config_data: dict[str, Any] | None = None) -> Training
     """Build a TrainingConfig from a YAML-derived dictionary."""
 
     config_data = config_data or {}
+    tracking_dir = config_data.get("tracking_dir", TrainingConfig().tracking_dir)
     return TrainingConfig(
         experiment_name=config_data.get(
             "experiment_name", TrainingConfig().experiment_name
@@ -167,6 +177,41 @@ def build_training_config(config_data: dict[str, Any] | None = None) -> Training
             "registered_model_name", TrainingConfig().registered_model_name
         ),
         tracking_uri=config_data.get("tracking_uri", TrainingConfig().tracking_uri),
+        tracking_dir=(
+            None
+            if tracking_dir is None
+            else Path(tracking_dir)
+        ),
+        model_artifact_path=str(
+            config_data.get(
+                "model_artifact_path",
+                TrainingConfig().model_artifact_path,
+            )
+        ),
+        config_artifact_path=str(
+            config_data.get(
+                "config_artifact_path",
+                TrainingConfig().config_artifact_path,
+            )
+        ),
+        history_artifact_path=str(
+            config_data.get(
+                "history_artifact_path",
+                TrainingConfig().history_artifact_path,
+            )
+        ),
+        summary_artifact_path=str(
+            config_data.get(
+                "summary_artifact_path",
+                TrainingConfig().summary_artifact_path,
+            )
+        ),
+        reports_artifact_dir=str(
+            config_data.get(
+                "reports_artifact_dir",
+                TrainingConfig().reports_artifact_dir,
+            )
+        ),
         epochs=int(config_data.get("epochs", TrainingConfig().epochs)),
         batch_size=(
             None

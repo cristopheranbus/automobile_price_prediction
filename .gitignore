@@ -1,5 +1,6 @@
 __pycache__/
 .pytest_cache/
+.pytest-cache-local/
 .mypy_cache/
 .venv/
 venv/
@@ -7,4 +8,7 @@ env/
 mlruns/
 artifacts/
 .uv-cache/
+mlflow.db
+*.egg-info/
+.vscode/
 *.pyc

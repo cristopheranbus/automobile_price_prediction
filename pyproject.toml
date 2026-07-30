@@ -7,7 +7,7 @@ name = "automobile-price-prediction"
 version = "0.1.0"
 description = "Automobile price prediction with reusable training utilities and MLflow."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13,<3.14"
 dependencies = [
   "mlflow",
   "numpy",
@@ -35,4 +35,7 @@ include = ["src*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-q"
+addopts = "-q --basetemp=.pytest-tmp -p no:cacheprovider"
+markers = [
+  "integration: tests that exercise the training pipeline end-to-end or with heavy mocks",
+]
